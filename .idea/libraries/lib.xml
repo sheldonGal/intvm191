@@ -9,8 +9,10 @@
       <root url="jar://$PROJECT_DIR$/../HW-Definitions/lib/jaxb-impl-2.3.1.jar!/" />
       <root url="jar://$PROJECT_DIR$/../HW-Definitions/lib/org.svvrl.goal.gui.jar!/" />
       <root url="jar://$PROJECT_DIR$/../HW-Definitions/lib/jaxb-api-2.4.0-b180830.0359.jar!/" />
+      <root url="file://$PROJECT_DIR$/../HW-Definitions/lib" />
     </CLASSES>
     <JAVADOC />
     <SOURCES />
+    <jarDirectory url="file://$PROJECT_DIR$/../HW-Definitions/lib" recursive="false" />
   </library>
 </component>

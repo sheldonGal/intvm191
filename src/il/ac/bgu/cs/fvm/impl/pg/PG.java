@@ -1,8 +1,6 @@
 package il.ac.bgu.cs.fvm.impl.pg;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 import il.ac.bgu.cs.fvm.impl.pg.util.PG_Validator;
 import il.ac.bgu.cs.fvm.programgraph.PGTransition;
@@ -33,9 +31,9 @@ public class PG<L, A> implements ProgramGraph<L, A> {
 	public void setInitial(L location, boolean isInitial) {
         PG_Validator.getInstance().setInitial(this, location, isInitial);
         if(isInitial)
-            this.initialLocation.remove(location);
-        else
             this.initialLocation.add(location);
+        else
+            this.initialLocation.remove(location);
 
 
 	}
@@ -96,5 +94,9 @@ public class PG<L, A> implements ProgramGraph<L, A> {
 	public void setName(String name) {
 		this.name = name;		
 	}
+
+
+
+
 
 }
