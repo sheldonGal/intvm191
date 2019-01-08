@@ -11,10 +11,10 @@ public class Reachable<S> {
     private final Set<S> reached;
     private final Queue<S> toReach;
 
-    public Reachable(TransitionSystem<S,?,?> ts){
+    public Reachable(TransitionSystem<S,?,?> ts, Set<S> states ){
         this.ts = ts;
         reached = new HashSet<>();
-        toReach = new ArrayDeque<>(ts.getInitialStates());
+        toReach = new ArrayDeque<>(states);
     }
 
     public Set<S> reachable() {

@@ -24,7 +24,9 @@ import il.ac.bgu.cs.fvm.transitionsystem.AlternatingSequence;
 import il.ac.bgu.cs.fvm.transitionsystem.Transition;
 import il.ac.bgu.cs.fvm.transitionsystem.TransitionSystem;
 import il.ac.bgu.cs.fvm.util.Pair;
+import il.ac.bgu.cs.fvm.verification.VerificationFailed;
 import il.ac.bgu.cs.fvm.verification.VerificationResult;
+import il.ac.bgu.cs.fvm.verification.VerificationSucceeded;
 
 import java.io.InputStream;
 import java.util.*;
@@ -142,7 +144,7 @@ public class FvmFacadeImpl implements FvmFacade {
 	@Override
 	public <S, A> Set<S> reach(TransitionSystem<S, A, ?> ts) {
 
-		Reachable<S> iter = new Reachable<>(ts);
+		Reachable<S> iter = new Reachable<>(ts, ts.getInitialStates());
 		return iter.reachable();
 	}
 
@@ -762,16 +764,137 @@ public class FvmFacadeImpl implements FvmFacade {
 	}
 
 
+	private <Sts, Saut, A, P> void addStatesToProduct(TransitionSystem<Pair<Sts, Saut>, A, Saut> newTs, TransitionSystem<Sts, A, P> ts, Automaton<Saut, P> aut){
+		for (Sts tsState : ts.getStates()) {
+			for (Saut autState : aut.getTransitions().keySet()) {
+				Pair<Sts,Saut> newState = new Pair<>(tsState,autState);
+				newTs.addState(newState);
+				newTs.addAtomicProposition(autState);
+				newTs.addToLabel(newState, autState);
+
+				if (ts.getInitialStates().contains(tsState)){
+					for (Saut s: aut.getInitialStates()){
+						if (aut.nextStates(s, ts.getLabel(tsState)).contains(autState))
+							newTs.setInitial(newState, true);
+					}
+				}
+
+			}
+		}
+	}
+	private <Sts, Saut, A, P> void addActionsToProduct(TransitionSystem<Pair<Sts, Saut>, A, Saut> newTs, TransitionSystem<Sts, A, P> ts){
+		for (A act: ts.getActions())
+			newTs.addAction(act);
+	}
+	private <Saut, Sts, A, P> void addTransitionsToProduct(TransitionSystem<Pair<Sts, Saut>, A, Saut> newTs, TransitionSystem<Sts, A, P> ts, Automaton<Saut, P> aut){
+		for (Pair<Sts, Saut> state1: newTs.getStates()){
+			for (Pair<Sts, Saut> state2: newTs.getStates()){
+				for (Transition<Sts, A> t: ts.getTransitions()){
+					Set<Saut> stats = aut.nextStates(state1.getSecond(), ts.getLabel(state2.getFirst()));
+					if (t.getFrom().equals(state1.getFirst()) && t.getTo().equals(state2.getFirst())
+							&& stats!=null && stats.contains(state2.getSecond())){
+						newTs.addTransition(new Transition<>(state1, t.getAction(), state2));
+					}
+				}
+			}
+		}
+	}
+	private <Saut, Sts, A> void cleanAtomicPropositions(TransitionSystem<Pair<Sts,Saut>,A,Saut> newTs) {
+		Set<Saut> listAtomicPropositionsToRemove = new HashSet<>();
+		for (Saut saut: newTs.getAtomicPropositions()){
+			boolean found = false;
+			for (Pair<Sts, Saut> state: newTs.getStates()){
+				if (newTs.getLabel(state).contains(saut))
+					found = true;
+			}
+			if (!found)
+				listAtomicPropositionsToRemove.add(saut);
+		}
+		for (Saut atomic: listAtomicPropositionsToRemove){
+			newTs.removeAtomicProposition(atomic);
+		}
+	}
+		@Override
+	public <Sts, Saut, A, P> TransitionSystem<Pair<Sts, Saut>, A, Saut> product(TransitionSystem<Sts, A, P> ts, Automaton<Saut, P> aut) {
+		TransitionSystem<Pair<Sts, Saut>, A, Saut> ans = createTransitionSystem();
+		addStatesToProduct(ans, ts, aut);
+		addActionsToProduct(ans, ts);
+		addTransitionsToProduct(ans, ts, aut);
+		removeUnreachableTransitionAndStates(ans);
+		cleanAtomicPropositions(ans);
+		return ans;
+	}
+
+
+
 
 	@Override
-	public <Sts, Saut, A, P> TransitionSystem<Pair<Sts, Saut>, A, Saut> product(TransitionSystem<Sts, A, P> ts, Automaton<Saut, P> aut) {
-		throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement product
-	}
-	//STOP HERE
-	@Override
 	public <S, A, P, Saut> VerificationResult<S> verifyAnOmegaRegularProperty(TransitionSystem<S, A, P> ts, Automaton<Saut, P> aut) {
-		throw new UnsupportedOperationException("Not supported yet."); // TODO: Implement verifyAnOmegaRegularProperty
+		TransitionSystem<Pair<S, Saut>, A, Saut> prod = product(ts, aut);
+		Set<Saut> autAcceptingStates = aut.getAcceptingStates();
+		for (Pair<S, Saut> state: prod.getStates()) {
+			Set<Pair<S, Saut>> reachedFromState = getReachFromState(prod,state);
+			if (autAcceptingStates.contains(state.getSecond()) && reachedFromState.contains(state)) {
+				return createVerificationFailed(prod, state);
+			}
+		}
+		return new VerificationSucceeded<>();
 	}
+
+	private <A, S> Set<S> getReachFromState(TransitionSystem<S,A,?> prod, S state) {
+		Reachable<S> iter = new Reachable<>(prod, post(prod, state));
+		return iter.reachable();
+	}
+
+	private <S, A, Saut> VerificationFailed<S> createVerificationFailed(TransitionSystem<Pair<S, Saut>, A, Saut> ts, Pair<S, Saut> state){
+		VerificationFailed<S> ans = new VerificationFailed<>();
+		//find prefix
+		findPathWrapper(ans, ts, state, ts.getInitialStates(), false);
+		//find cycle
+		findPathWrapper(ans, ts, state, post(ts, state), true);
+		return ans;
+	}
+
+	private <S, A, Saut> void findPathWrapper(VerificationFailed<S> ans, TransitionSystem<Pair<S,Saut>,A,Saut> ts, Pair<S,Saut> state, Set<Pair<S, Saut>> states, boolean cycle) {
+		List<S> path;
+		for (Pair<S, Saut> currState: states){
+			path = getPathRec(ts, currState, state, new ArrayList<>(), new HashSet<>());
+			if (path != null) {
+				path.remove(path.size() - 1);
+				if(cycle) {
+					path.add(0,state.getFirst());
+					ans.setCycle(path);
+				}
+				else{
+					ans.setPrefix(path);
+				}
+				return;
+			}
+		}
+	}
+
+
+
+
+
+
+
+	private <S, A, Saut> List<S> getPathRec(TransitionSystem<Pair<S, Saut>, A, Saut> ts, Pair<S, Saut> start, Pair<S, Saut> end, List<S> acc , HashSet<Pair<S, Saut>> statesInPath){
+		if (statesInPath.contains(start)) {
+			return null;
+		}
+		acc.add(start.getFirst());
+		if(start.equals(end))
+			return acc;
+		statesInPath.add(start);
+		for(Pair<S, Saut> state: post(ts,start)){
+			List<S> ans = getPathRec(ts,state,end,acc,statesInPath);
+			if (ans!=null)
+				return ans;
+		}
+		return null;
+	}
+
 
 	@Override
 	public <L> Automaton<?, L> LTL2NBA(LTL<L> ltl) {
